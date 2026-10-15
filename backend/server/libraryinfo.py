@@ -22,7 +22,10 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
-import gnuradio
+try:
+    import gnuradio
+except ImportError:  # GNU Radio is optional; the app must start without it
+    gnuradio = None
 
 from common.logger import logger
 
@@ -287,7 +290,11 @@ def get_library_versions(use_cache: bool = True) -> Dict[str, Any]:
         # Fallback to Python import
         system_libraries["gnuradio"] = {
             "name": "GNU Radio",
-            "version": gnuradio.__version__ if hasattr(gnuradio, "__version__") else "installed",
+            "version": (
+                gnuradio.__version__
+                if gnuradio is not None and hasattr(gnuradio, "__version__")
+                else "not installed"
+            ),
             "category": "sdr",
             "description": "Software-defined radio framework",
         }

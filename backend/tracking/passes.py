@@ -17,6 +17,8 @@
 
 import json
 import logging
+import os
+import tempfile
 from typing import Dict, List, Union
 
 import numpy as np
@@ -300,7 +302,7 @@ def calculate_next_events(
         ), "home_location must contain 'lat' and 'lon' keys"
 
         # set a temporary folder for the skyfield library to do its thing
-        skyfieldloader = Loader("/tmp/skyfield-data")  # or any preferred path
+        skyfieldloader = Loader(os.path.join(tempfile.gettempdir(), "skyfield-data"))
         ts = skyfieldloader.timescale()
 
         homelat = float(home_location["lat"])

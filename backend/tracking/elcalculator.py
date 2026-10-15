@@ -15,6 +15,8 @@
 """Calculate elevation crossing times for satellite passes."""
 
 import logging
+import os
+import tempfile
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -71,7 +73,7 @@ def calculate_elevation_crossing_time(
             return (None, None)
 
         # Setup Skyfield
-        skyfieldloader = Loader("/tmp/skyfield-data")
+        skyfieldloader = Loader(os.path.join(tempfile.gettempdir(), "skyfield-data"))
         ts = skyfieldloader.timescale()
 
         # Create observer location

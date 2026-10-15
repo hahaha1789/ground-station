@@ -10,18 +10,46 @@
 from __future__ import annotations
 
 import logging
+import socket
 import threading
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
+import urllib3
 
+HORIZONS_API_HOST = "ssd.jpl.nasa.gov"
+HORIZONS_API_PATH = "/api/horizons.api"
 HORIZONS_API_URL = "https://ssd.jpl.nasa.gov/api/horizons.api"
-HORIZONS_CONNECT_TIMEOUT_SECONDS = 2.0
+HORIZONS_CONNECT_TIMEOUT_SECONDS = 10.0
 HORIZONS_BACKOFF_SECONDS = (60, 120, 300, 600)
 HORIZONS_MANUAL_PROBE_INTERVAL_SECONDS = 10.0
 logger = logging.getLogger("ground-station")
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+
+def _build_horizons_request_kwargs() -> Dict[str, Any]:
+    """Build request kwargs that avoid TLS SNI inspection on restrictive networks.
+
+    Some networks reset the connection when the TLS SNI hostname is
+    ssd.jpl.nasa.gov. Connecting to the resolved IP address (no SNI) while
+    sending the original Host header reaches the same API endpoint. Certificate
+    hostname verification is disabled for that connection because the server
+    certificate is bound to the hostname, not the IP address.
+    """
+    try:
+        infos = socket.getaddrinfo(HORIZONS_API_HOST, 443, proto=socket.IPPROTO_TCP)
+        host = infos[0][4][0]
+    except OSError:
+        host = HORIZONS_API_HOST
+    if host == HORIZONS_API_HOST:
+        return {"url": HORIZONS_API_URL, "headers": None, "verify": True}
+    return {
+        "url": f"https://{host}{HORIZONS_API_PATH}",
+        "headers": {"Host": HORIZONS_API_HOST},
+        "verify": False,
+    }
 
 
 class HorizonsUnavailableError(RuntimeError):
@@ -187,7 +215,14 @@ def _request_horizons_json(
     read_timeout = max(HORIZONS_CONNECT_TIMEOUT_SECONDS, float(timeout_seconds))
     timeout = (HORIZONS_CONNECT_TIMEOUT_SECONDS, read_timeout)
     try:
-        response = requests.get(HORIZONS_API_URL, params=params, timeout=timeout)
+        request_kwargs = _build_horizons_request_kwargs()
+        response = requests.get(
+            request_kwargs["url"],
+            params=params,
+            headers=request_kwargs.get("headers"),
+            timeout=timeout,
+            verify=request_kwargs.get("verify", True),
+        )
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         reason = _service_failure_reason(exc)

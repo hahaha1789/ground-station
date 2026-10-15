@@ -33,6 +33,33 @@ from tracker.manager import TrackerManager
 logger = logging.getLogger("tracker-worker")
 
 
+def _run_tracker_process(normalized_id: str, queue_to_tracker: Queue, stop_event: MpEvent, output_queue: Queue):
+    """Module-level entrypoint for the tracker worker process.
+
+    Kept at module scope so the function is picklable on platforms that use
+    the "spawn" start method (Windows). Local closures cannot be pickled.
+    """
+    title = f"Ground Station - SatelliteTracker[{normalized_id}]"
+    setproctitle.setproctitle(title)
+    multiprocessing.current_process().name = title
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        tracker = SatelliteTracker(
+            queue_out=output_queue,
+            queue_in=queue_to_tracker,
+            stop_event=stop_event,
+            tracker_id=normalized_id,
+        )
+        loop.run_until_complete(tracker.run())
+    except Exception as e:
+        logger.error("Error in tracker process '%s': %s", normalized_id, e)
+        logger.exception(e)
+    finally:
+        loop.close()
+
+
 @dataclass
 class TrackerRuntime:
     tracker_id: str
@@ -174,29 +201,10 @@ class TrackerSupervisor:
     def _build_process(self, tracker_id: str, queue_to_tracker: Queue, stop_event: MpEvent):
         normalized_id = require_tracker_id(tracker_id)
 
-        def run_tracking_task():
-            title = f"Ground Station - SatelliteTracker[{normalized_id}]"
-            setproctitle.setproctitle(title)
-            multiprocessing.current_process().name = title
-
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            try:
-                tracker = SatelliteTracker(
-                    queue_out=self.output_queue,
-                    queue_in=queue_to_tracker,
-                    stop_event=stop_event,
-                    tracker_id=normalized_id,
-                )
-                loop.run_until_complete(tracker.run())
-            except Exception as e:
-                logger.error("Error in tracker process '%s': %s", normalized_id, e)
-                logger.exception(e)
-            finally:
-                loop.close()
-
         return multiprocessing.Process(
-            target=run_tracking_task, name="Ground Station - SatelliteTracker"
+            target=_run_tracker_process,
+            args=(normalized_id, queue_to_tracker, stop_event, self.output_queue),
+            name="Ground Station - SatelliteTracker",
         )
 
     def start_tracker(self, tracker_id: str) -> TrackerRuntime:

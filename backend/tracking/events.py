@@ -3,6 +3,8 @@ import hashlib
 import json
 import logging
 import multiprocessing
+import os
+import tempfile
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Union
@@ -80,7 +82,7 @@ def _calculate_elevation_curve(
     """
     try:
         # Initialize Skyfield
-        skyfieldloader = Loader("/tmp/skyfield-data")
+        skyfieldloader = Loader(os.path.join(tempfile.gettempdir(), "skyfield-data"))
         ts = skyfieldloader.timescale()
 
         # Create satellite and observer objects
